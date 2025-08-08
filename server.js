@@ -17,11 +17,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use("/absensin/api/auth", authRoutes);
-app.use("/absensin/api/students", studentRoutes);
-app.use("/absensin/api/attendances", attendanceRoutes);
-app.use("/absensin/api/classes", classRoutes);
-app.use("/absensin/api/users", userRoutes); // Tambahkan ini
+app.use("/absen/api/auth", authRoutes);
+app.use("/absen/api/students", studentRoutes);
+app.use("/absen/api/attendances", attendanceRoutes);
+app.use("/absen/api/classes", classRoutes);
+app.use("/absen/api/users", userRoutes); // Tambahkan ini
 
 // Default route
 app.get("/", (req, res) => {
