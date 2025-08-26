@@ -3,6 +3,7 @@ const { body, validationResult } = require("express-validator");
 const moment = require("moment");
 const Attendance = require("../models/Attendance");
 const Student = require("../models/Student");
+const Class = require("../models/Class");
 const { authenticateToken, authorizeRole } = require("../middleware/auth");
 const router = express.Router();
 const ExcelJS = require("exceljs");
@@ -326,7 +327,13 @@ router.get(
       if (!classId) {
         return res.status(400).json({ message: "Class ID is required" });
       }
-
+       const classData = await Class.findById(classId);
+      if (!classData) {
+        return res
+          .status(404)
+          .json({ message: `Class with ID ${classId} not found` });
+      }
+      const className = classData.class_name;
       const attendances = await Attendance.getByClassAndDate(classId, date);
 
       if (attendances.length === 0) {
@@ -353,7 +360,7 @@ router.get(
         classId
       );
 
-      const reportTitle = `Laporan Absensi Harian Kelas ${classId}`;
+      const reportTitle = `Laporan Absensi Harian Kelas ${className}`;
       const reportPeriod = `Tanggal: ${moment(date).format("DD MMMM YYYY")}`;
 
       const excelBuffer = await generateExcel(
@@ -368,7 +375,7 @@ router.get(
         "Content-Type",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
-      res.attachment(`Laporan_Absensi_Harian_${classId}_${date}.xlsx`);
+      res.attachment(`Laporan_Absensi_Harian_${className}_${date}.xlsx`);
       return res.send(excelBuffer);
     } catch (error) {
       res.status(500).json({ message: "Server error", error: error.message });
@@ -588,6 +595,13 @@ router.get(
           }`,
         });
       }
+      let className = "";
+      if (targetClassId) {
+        const classData = await Class.findById(targetClassId);
+        if (classData) {
+          className = classData.class_name;
+        }
+      }
 
       // Create summary data
       const summaryReport = createAttendanceSummary(detailReport);
@@ -622,7 +636,7 @@ router.get(
       )} hingga ${moment(end_date).format("DD MMMM YYYY")}`;
 
       if (targetClassId) {
-        reportTitle = `${reportTitle} Kelas ${targetClassId}`;
+        reportTitle = `Persentase Kehadiran kelas : ${className}`;
       }
 
       const excelBuffer = await generateExcelWithSummary(
@@ -640,7 +654,7 @@ router.get(
       );
       res.attachment(
         `Laporan_Absensi_Tanggal_${start_date}_${end_date}${
-          targetClassId ? `_Kelas_${targetClassId}` : ""
+          targetClassId ? `_Kelas_${className}` : ""
         }.xlsx`
       );
       return res.send(excelBuffer);
@@ -675,6 +689,13 @@ router.get(
       if (req.user.role === "secretary") {
         targetClassId = req.user.class_id;
       }
+       const classData = await Class.findById(targetClassId);
+      if (!classData) {
+        return res
+          .status(404)
+          .json({ message: `Class with ID ${targetClassId} not found` });
+      }
+      const className = classData.class_name;
 
       const startMonthInt = parseInt(start_month);
       const startYearInt = parseInt(start_year);
@@ -700,9 +721,10 @@ router.get(
       }
 
       let reportData;
+      let fields;
       let filenamePrefix = "Laporan_Absensi_Bulan_Range";
       let sheetNamePrefix = "Ringkasan Bulanan";
-      let reportTitle = `Laporan Absensi Bulanan Kelas ${targetClassId}`;
+      let reportTitle = `Persentase Kehadiran kelas : ${className}`;
       let reportPeriod;
 
       const startMoment = moment(
@@ -731,7 +753,7 @@ router.get(
 
         filenamePrefix = "Laporan_Absensi_Detail_Bulan_Range";
         sheetNamePrefix = "Detail Bulanan";
-        reportTitle = `Laporan Absensi Detail Bulanan Kelas ${targetClassId}`;
+        reportTitle = `Laporan Absensi Detail Bulanan Kelas ${className}`;
 
         // Flatten detailed data
         const flattenedData = [];
@@ -772,7 +794,7 @@ router.get(
           }
         });
 
-        const fields = [
+        fields = [
           { label: "NIS", value: "nis", width: 15 },
           { label: "Nama Siswa", value: "full_name", width: 25 },
           { label: "Tahun", value: "year", width: 10 },
@@ -808,7 +830,7 @@ router.get(
           };
         });
 
-        const fields = [
+        fields = [
           { label: "NIS", value: "nis", width: 15 },
           { label: "Nama Siswa", value: "full_name", width: 25 },
           { label: "Hadir", value: "hadir", width: 10 },
@@ -822,7 +844,7 @@ router.get(
 
       if (reportData.length === 0) {
         return res.status(404).json({
-          message: `No attendance data found for the month range ${start_month}/${start_year} to ${end_month}/${end_year} for class ${targetClassId}`,
+          message: `No attendance data found for the month range ${start_month}/${start_year} to ${end_month}/${end_year} for class ${className}`,
         });
       }
 
@@ -840,7 +862,7 @@ router.get(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
       res.attachment(
-        `${filenamePrefix}_${targetClassId}_${start_month}-${start_year}_${end_month}-${end_year}.xlsx`
+        `${filenamePrefix}_${className}_${start_month}-${start_year}_${end_month}-${end_year}.xlsx`
       );
       return res.send(excelBuffer);
     } catch (error) {

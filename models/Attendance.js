@@ -24,12 +24,14 @@ class Attendance {
     return rows.length > 0 ? rows[0].class_name : `Kelas ${classId}`;
   }
 
+  // Metode getByClassAndDate diperbaiki
   static async getByClassAndDate(classId, date) {
     const [rows] = await db.execute(
       `
-      SELECT s.id as student_id, s.full_name, s.student_id as nis, s.class_name,
-             COALESCE(a.status, 'hadir') as status, a.notes, a.id as attendance_id
+      SELECT s.id as student_id, s.full_name, s.student_id as nis, 
+             c.class_name, a.status, a.notes, a.id as attendance_id
       FROM students s 
+      JOIN classes c ON s.class_id = c.id
       LEFT JOIN attendances a ON s.id = a.student_id AND a.attendance_date = ?
       WHERE s.class_id = ? AND s.is_active = true
       ORDER BY s.full_name
@@ -39,11 +41,13 @@ class Attendance {
     return rows;
   }
 
+  // Metode getByDateRange diperbaiki
   static async getByDateRange(startDate, endDate, classId = null) {
     let query = `
-      SELECT a.*, s.full_name, s.student_id as nis, s.class_name, u.full_name as recorded_by_name
+      SELECT a.*, s.full_name, s.student_id as nis, c.class_name, u.full_name as recorded_by_name
       FROM attendances a
       JOIN students s ON a.student_id = s.id
+      JOIN classes c ON s.class_id = c.id
       JOIN users u ON a.recorded_by = u.id
       WHERE a.attendance_date BETWEEN ? AND ?
     `;
@@ -54,27 +58,29 @@ class Attendance {
       params.push(classId);
     }
 
-    query += " ORDER BY a.attendance_date DESC, s.class_name, s.full_name";
+    query += " ORDER BY a.attendance_date DESC, c.class_name, s.full_name";
 
     const [rows] = await db.execute(query, params);
     return rows;
   }
 
+  // Metode getAttendanceReport diperbaiki
   static async getAttendanceReport(classId, month, year) {
     const [rows] = await db.execute(
       `
-      SELECT s.id, s.full_name, s.student_id as nis, s.class_name,
+      SELECT s.id, s.full_name, s.student_id as nis, c.class_name,
              COUNT(CASE WHEN a.status = 'hadir' THEN 1 END) as hadir,
              COUNT(CASE WHEN a.status = 'sakit' THEN 1 END) as sakit,
              COUNT(CASE WHEN a.status = 'ijin' THEN 1 END) as ijin,
              COUNT(CASE WHEN a.status = 'alfa' THEN 1 END) as alfa,
              COUNT(a.id) as total_recorded
       FROM students s
+      JOIN classes c ON s.class_id = c.id
       LEFT JOIN attendances a ON s.id = a.student_id 
         AND MONTH(a.attendance_date) = ? 
         AND YEAR(a.attendance_date) = ?
       WHERE s.class_id = ? AND s.is_active = true
-      GROUP BY s.id, s.full_name, s.student_id, s.class_name
+      GROUP BY s.id, s.full_name, s.student_id, c.class_name
       ORDER BY s.full_name
     `,
       [month, year, classId]
@@ -82,7 +88,7 @@ class Attendance {
     return rows;
   }
 
-  // FIXED METHOD: Get attendance report for month range
+  // Metode getAttendanceReportByMonthRange diperbaiki
   static async getAttendanceReportByMonthRange(
     classId,
     startMonth,
@@ -90,13 +96,11 @@ class Attendance {
     endMonth,
     endYear
   ) {
-    // Convert to numbers - use let instead of const for reassignment
     let startMonthInt = parseInt(startMonth);
     let startYearInt = parseInt(startYear);
     let endMonthInt = parseInt(endMonth);
     let endYearInt = parseInt(endYear);
 
-    // Build date conditions
     const startDate = `${startYearInt}-${startMonthInt
       .toString()
       .padStart(2, "0")}-01`;
@@ -112,17 +116,18 @@ class Attendance {
       s.id, 
       s.full_name, 
       s.student_id as nis, 
-      s.class_name,
+      c.class_name,
       SUM(CASE WHEN a.status = 'hadir' THEN 1 ELSE 0 END) as hadir,
       SUM(CASE WHEN a.status = 'sakit' THEN 1 ELSE 0 END) as sakit,
       SUM(CASE WHEN a.status = 'ijin' THEN 1 ELSE 0 END) as ijin,
       SUM(CASE WHEN a.status = 'alfa' THEN 1 ELSE 0 END) as alfa,
       COUNT(a.id) as total_recorded
     FROM students s
+    JOIN classes c ON s.class_id = c.id
     LEFT JOIN attendances a ON s.id = a.student_id 
       AND a.attendance_date BETWEEN ? AND ?
     WHERE s.class_id = ? AND s.is_active = true
-    GROUP BY s.id, s.full_name, s.student_id, s.class_name
+    GROUP BY s.id, s.full_name, s.student_id, c.class_name
     ORDER BY s.full_name
     `,
       [startDate, endDate, classId]
@@ -131,7 +136,7 @@ class Attendance {
     return rows;
   }
 
-  // FIXED METHOD: Get detailed attendance report for month range
+  // Metode getDetailedAttendanceReportByMonthRange diperbaiki
   static async getDetailedAttendanceReportByMonthRange(
     classId,
     startMonth,
@@ -139,7 +144,6 @@ class Attendance {
     endMonth,
     endYear
   ) {
-    // Convert to numbers - use let instead of const for reassignment
     let startMonthInt = parseInt(startMonth);
     let startYearInt = parseInt(startYear);
     let endMonthInt = parseInt(endMonth);
@@ -147,7 +151,7 @@ class Attendance {
 
     const [rows] = await db.execute(
       `
-      SELECT s.id, s.full_name, s.student_id as nis, s.class_name,
+      SELECT s.id, s.full_name, s.student_id as nis, c.class_name,
              YEAR(a.attendance_date) as year,
              MONTH(a.attendance_date) as month,
              MONTHNAME(a.attendance_date) as month_name,
@@ -157,6 +161,7 @@ class Attendance {
              COUNT(CASE WHEN a.status = 'alfa' THEN 1 END) as alfa,
              COUNT(a.id) as total_recorded
       FROM students s
+      JOIN classes c ON s.class_id = c.id
       LEFT JOIN attendances a ON s.id = a.student_id 
         AND (
           (YEAR(a.attendance_date) = ? AND MONTH(a.attendance_date) >= ?) OR
@@ -164,7 +169,7 @@ class Attendance {
           (YEAR(a.attendance_date) = ? AND MONTH(a.attendance_date) <= ?)
         )
       WHERE s.class_id = ? AND s.is_active = true
-      GROUP BY s.id, s.full_name, s.student_id, s.class_name, YEAR(a.attendance_date), MONTH(a.attendance_date)
+      GROUP BY s.id, s.full_name, s.student_id, c.class_name, YEAR(a.attendance_date), MONTH(a.attendance_date)
       ORDER BY s.full_name, year, month
     `,
       [
@@ -178,7 +183,6 @@ class Attendance {
       ]
     );
 
-    // Group by student
     const studentData = {};
     rows.forEach((row) => {
       if (!studentData[row.id]) {
@@ -193,7 +197,6 @@ class Attendance {
       }
 
       if (row.year) {
-        // Only add months that have data
         studentData[row.id].months.push({
           year: row.year,
           month: row.month,
@@ -205,7 +208,6 @@ class Attendance {
           total_recorded: row.total_recorded,
         });
 
-        // Add to totals
         studentData[row.id].totals.hadir += row.hadir;
         studentData[row.id].totals.sakit += row.sakit;
         studentData[row.id].totals.ijin += row.ijin;
@@ -217,28 +219,30 @@ class Attendance {
     return Object.values(studentData);
   }
 
-  // NEW METHOD: Get all students with their class names
+  // Metode getAllStudentsWithClass diperbaiki
   static async getAllStudentsWithClass() {
     const [rows] = await db.execute(
       `
-      SELECT s.id, s.student_id as nis, s.full_name, s.class_name, s.class_id,
+      SELECT s.id, s.student_id as nis, s.full_name, c.class_name, s.class_id,
              s.gender, s.birth_date, s.address, s.phone, s.parent_phone, s.is_active
       FROM students s
+      JOIN classes c ON s.class_id = c.id
       WHERE s.is_active = true
-      ORDER BY s.class_name, s.full_name
+      ORDER BY c.class_name, s.full_name
       `
     );
     return rows;
   }
 
-  // NEW METHOD: Get students by class using class_name
+  // Metode getStudentsByClassName diperbaiki
   static async getStudentsByClassName(className) {
     const [rows] = await db.execute(
       `
-      SELECT s.id, s.student_id as nis, s.full_name, s.class_name, s.class_id,
+      SELECT s.id, s.student_id as nis, s.full_name, c.class_name, s.class_id,
              s.gender, s.birth_date, s.address, s.phone, s.parent_phone, s.is_active
       FROM students s
-      WHERE s.class_name = ? AND s.is_active = true
+      JOIN classes c ON s.class_id = c.id
+      WHERE c.class_name = ? AND s.is_active = true
       ORDER BY s.full_name
       `,
       [className]
